@@ -14,7 +14,7 @@ __pycache__/
 *.py[cod]
 
 # --- Données (lourdes, versionnées hors git) ---
-data/
+/data/
 *.tif
 *.tiff
 # NB : on n'ignore PAS les petits PNG d'exemple pour le notebook si tu en mets
