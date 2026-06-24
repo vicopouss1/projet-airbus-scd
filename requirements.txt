@@ -1,0 +1,38 @@
+# =============================================================================
+# Dépendances "métier" du projet — IDENTIQUES en local et sur vast.ai.
+#
+# IMPORTANT : torch et torchvision NE SONT PAS ici, volontairement.
+#   - En local (Mac)   : tu as déjà la build MPS installée dans ton env.
+#   - Sur vast.ai      : tu pars d'une image Docker PyTorch+CUDA qui les
+#                        contient déjà, câblés au GPU NVIDIA.
+# Réinstaller torch via ce fichier casserait le lien au GPU. On ne le fait pas.
+#
+# Installation :  pip install -r requirements.txt
+# =============================================================================
+
+# --- Calcul scientifique ---
+numpy>=1.26,<3
+scipy>=1.11
+
+# --- Données & images ---
+pillow>=10.0           # lecture des masques PNG 3 canaux
+opencv-python-headless>=4.8   # redimensionnement, morphologie (post-traitement)
+rasterio>=1.3          # si tu manipules du géoréférencé plus tard (optionnel)
+
+# --- Métriques & sélection de seuil ---
+scikit-learn>=1.3      # courbes PR, métriques de base
+
+# --- Visualisation (notebook) ---
+matplotlib>=3.7
+seaborn>=0.13          # heatmaps de matrices de confusion
+
+# --- Config & expériences ---
+pyyaml>=6.0            # lecture des configs YAML (une par expérience)
+tqdm>=4.66             # barres de progression d'entraînement
+
+# --- Notebook ---
+jupyterlab>=4.0
+ipywidgets>=8.0        # widgets interactifs (sliders de seuil, etc.)
+
+# --- Suivi d'expériences (optionnel mais recommandé pour comparer tes runs) ---
+# tensorboard>=2.15

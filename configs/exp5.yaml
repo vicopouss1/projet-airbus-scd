@@ -1,0 +1,64 @@
+# =============================================================================
+# Config de l'Expérience 5 (skip connections + multi-head + data aug).
+# C'est ta meilleure : mIoU 0.79 / BCD IoU 0.41.
+#
+# Principe : UNE expérience = UN fichier de config. Pour rejouer cette
+# expérience :  python -m src.train --config configs/exp5.yaml
+# Pour en créer une nouvelle, tu copies ce fichier et tu changes les champs.
+# C'est ce qui rend tes 6 expériences reproductibles et comparables.
+# =============================================================================
+
+experiment:
+  name: "exp5_skip_multihead_augment"
+  seed: 42                    # graine fixe = résultats reproductibles
+  notes: "Skip connections + 2 têtes séparées + data augmentation"
+
+data:
+  root: "data/hi-ucd-complete"   # adapte au chemin réel
+  num_classes: 10                # 9 classes + unlabeled (classe 0)
+  ignore_index: 0                # la classe unlabeled, EXCLUE de loss & métriques
+  tile_size: 512                 # à confirmer de visu (cf. tes réserves)
+  augment: true                  # la data aug activée en Exp 5
+
+model:
+  backbone: "resnet50"           # passera à "dinov3" pour l'Exp 6
+  freeze_backbone: false         # en Exp 4-6 les embeddings sont "live"
+  skip_connections: true
+  fusion: "concat_diff"          # [z1 ; z2 ; |z1 - z2|], ta baseline de fusion
+  heads:
+    - name: "semantic"           # tête segmentation (2 cartes T1/T2)
+      out_channels: 10
+    - name: "change"             # tête changement (carte binaire)
+      out_channels: 1
+
+loss:
+  # Pondération multi-tâche — LE levier qu'on veut explorer ensuite.
+  # En Exp 5 c'est une somme simple ; ici on expose les poids pour pouvoir
+  # les régler (et tester l'uncertainty weighting plus tard).
+  semantic:
+    cross_entropy: 1.0
+    dice: 1.0
+  change:
+    focal: 1.0
+  task_weighting: "fixed"        # "fixed" | "uncertainty" (à implémenter)
+  weight_semantic: 1.0
+  weight_change: 1.0             # <-- monte ce poids pour combattre le
+                                 #     déséquilibre de tâches de l'Exp 4
+
+training:
+  epochs: 50
+  batch_size: 8                  # réduis à 2 pour un smoke test local
+  optimizer: "adamw"
+  lr: 0.0001
+  weight_decay: 0.01
+  scheduler: "cosine"
+
+eval:
+  metrics: ["mIoU", "Sek", "Fscd", "BCD_IoU"]
+  # Seuil de la tête de changement : choisi sur validation, figé pour le test.
+  # null = à déterminer par balayage (cf. select_threshold.py).
+  change_threshold: null
+
+device:
+  # vide = auto-détection (MPS en local, CUDA sur vast.ai). Ne pas forcer.
+  force: null

@@ -1,0 +1,41 @@
+# =============================================================================
+# .gitignore — ce qui NE doit PAS aller dans git.
+# Principe : le code et les configs voyagent ; les données, poids et env, non.
+# Un repo léger se clone vite sur vast.ai (tu paies pendant le clone).
+# =============================================================================
+
+# --- Environnements Python ---
+env_fil_rouge/
+.venv/
+venv/
+env/
+*.egg-info/
+__pycache__/
+*.py[cod]
+
+# --- Données (lourdes, versionnées hors git) ---
+data/
+*.tif
+*.tiff
+# NB : on n'ignore PAS les petits PNG d'exemple pour le notebook si tu en mets
+#      dans un dossier dédié type assets/ ; adapte au besoin.
+
+# --- Sorties d'entraînement (lourdes / reproductibles) ---
+outputs/checkpoints/
+outputs/logs/
+*.pth
+*.pt
+*.ckpt
+
+# --- Notebooks : on garde le .ipynb mais pas les checkpoints auto ---
+.ipynb_checkpoints/
+
+# --- Caches divers ---
+.cache/
+.pytest_cache/
+.DS_Store          # fichier macOS parasite — important sur ton Mac
+
+# --- Secrets / clés (ne JAMAIS committer une clé vast.ai ou API) ---
+.env
+*.key
+secrets.yaml
