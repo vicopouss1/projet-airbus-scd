@@ -21,6 +21,7 @@ __pycache__/
 #      dans un dossier dédié type assets/ ; adapte au besoin.
 
 # --- Sorties d'entraînement (lourdes / reproductibles) ---
+*.json
 outputs/checkpoints/
 outputs/logs/
 *.pth
