@@ -74,7 +74,8 @@ def evaluate(model, loader, device, change_threshold=0.5):
 
 
 def train(data_root, epochs=2, batch_size=4, lr=1e-4,
-          debug_n=None, save_path=None, val_debug_n=200, train_eval_n=200):
+          debug_n=None, save_path=None, val_debug_n=200, train_eval_n=200,
+          backbone="resnet"):
     """Train the model and return (model, history).
 
     data_root    : dataset root
@@ -103,7 +104,7 @@ def train(data_root, epochs=2, batch_size=4, lr=1e-4,
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
 
     # 3. Model.
-    model = ChangeDetectionModel(num_classes=10)
+    model = ChangeDetectionModel(num_classes=10, backbone=backbone)
     model = model.to(device)
 
     # 4. Optimizer: only trainable parameters.
