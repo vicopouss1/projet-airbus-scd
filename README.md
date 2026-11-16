@@ -1,80 +1,81 @@
-# Détection sémantique de changements — Projet Fil Rouge Airbus
+# Semantic Change Detection in Aerial Imagery
 
-Détection de changement sémantique urbain sur le dataset **Hi-UCD** (Tallinn,
-imagerie aérienne 0,1 m, 2 dates). Réseau siamois middle-fusion, full supervisé.
+Team project at Télécom Paris, supervised by Airbus (2026).
 
-## Structure du projet
+Given two aerial images of the same area taken one year apart, the model predicts:
+
+- a land-cover map for each date (semantic segmentation, 9 classes plus `unlabeled`);
+- a binary map of what changed between the two dates.
+
+## Dataset
+
+Hi-UCD (Tallinn, 0.1 m aerial imagery, 2018 and 2019). Each mask is a 3-channel PNG:
+
+| Channel | Content |
+|---|---|
+| 1 | land-cover classes, 2018 (0–9) |
+| 2 | land-cover classes, 2019 (0–9) |
+| 3 | change: 0 = unlabeled, 1 = no change, 2 = change |
+
+`unlabeled` pixels are excluded from the losses and the metrics. The official test set has no public labels, so `scripts/make_val_split.py` splits the validation set into `val_tuning` (70 %, threshold and hyperparameter selection) and `val_test` (30 %), with a fixed seed. Data are not included in the repo.
+
+## Model
+
+A multi-task Siamese network:
+
+1. **Shared frozen encoder**, applied to both dates:
+   - ResNet-50, ImageNet weights (`src/models/encoders/resnet_encoder.py`);
+   - DINOv3 ViT-L/16 pretrained on satellite imagery (SAT-493M), loaded with HuggingFace Transformers (`src/models/encoders/dino_encoder.py`). Patch tokens are reshaped into a 32×32 feature map.
+2. **Fusion**: `[z_2018 ; z_2019 ; |z_2018 − z_2019|]` along the channel axis.
+3. **Multi-task decoder**: shared upsampling trunk with three heads (segmentation 2018, segmentation 2019, change). The number of upsampling steps adapts to the encoder resolution.
+
+Only the decoder and heads are trained.
+
+**Losses**: cross-entropy + Dice for segmentation, Focal loss for the change head (strong class imbalance).
+**Metrics**: mean IoU over land-cover classes, IoU of the `change` class. The change threshold is selected on `val_tuning` (`src/threshold.py`).
+
+## Results
+
+Validation change IoU, frozen encoders:
+
+| Encoder | Change IoU (val) |
+|---|---|
+| ResNet-50 (ImageNet) | 0.26 |
+| DINOv3 ViT-L (satellite) | **0.41** |
+
+With DINOv3, validation scores plateau after about 10 epochs while training scores keep increasing, so the model overfits. Semantic segmentation (val mIoU ≈ 0.33) is limited by the frozen backbone. Next steps: early stopping, partial fine-tuning of the encoder (e.g. LoRA), stronger data augmentation.
+
+## Repository structure
 
 ```
-projet-airbus-scd/
-├── notebooks/        # exploration : masque 3 canaux, distributions, visus
-├── src/
-│   ├── data/         # dataset Hi-UCD, lecture du masque, dataloader
-│   ├── models/       # encodeur siamois, têtes, fusion
-│   ├── losses/       # CE / Dice / Focal + pondération multi-tâche
-│   ├── utils/        # device (MPS/CUDA/CPU), helpers
-│   ├── train.py      # boucle d'entraînement
-│   └── evaluate.py   # mIoU / Sek / Fscd / BCD IoU + seuil
-├── configs/          # 1 expérience = 1 fichier YAML
-├── scripts/          # utilitaires one-shot (préparation données, etc.)
-└── outputs/          # checkpoints, logs, figures (git-ignorés)
+src/
+├── data/hiucd_dataset.py   # dataset and 3-channel mask decoding
+├── models/                 # encoders, fusion, decoder, full model
+├── losses/losses.py        # CE, Dice, Focal, multi-task loss
+├── metrics.py              # mIoU, change IoU
+├── train.py                # training and evaluation loop
+├── threshold.py            # change-threshold sweep on validation
+└── utils/                  # device selection, plots, prediction visualization
+scripts/make_val_split.py   # val_tuning / val_test split
+notebooks/                  # data exploration and experiments
 ```
 
-**Règle de partage notebook / scripts :**
-- *notebook* = ce qui se regarde une fois (explorer, visualiser, comprendre)
-- *script*   = ce qui se rejoue, se teste, s'importe (data, modèle, train, eval)
-
-**Règle des expériences :** une expérience est un fichier de config, pas une
-copie de code. `python -m src.train --config configs/exp5.yaml`.
-
-## Workflow en deux environnements
-
-Le code est écrit UNE fois et tourne partout grâce à `src/utils/device.py`
-(auto-détection MPS / CUDA / CPU).
-
-### En local (Mac, GPU Apple Silicon via MPS)
-Pour : exploration, développement, débogage, **smoke tests**.
+## Usage
 
 ```bash
-source env_fil_rouge/bin/activate
-pip install -r requirements.txt      # n'installe PAS torch (déjà présent)
-python -m src.utils.device           # vérifie que MPS est vu
+pip install -r requirements.txt   # torch / torchvision installed separately (see below)
+python -m src.utils.device        # checks which accelerator is available
 ```
 
-### Sur vast.ai (GPU NVIDIA via CUDA)
-Pour : les gros entraînements uniquement.
+```python
+from src.train import train
 
-1. Lancer une instance avec une **image Docker PyTorch + CUDA** (torch déjà
-   câblé au GPU — ne PAS le réinstaller).
-2. Sur l'instance :
-   ```bash
-   git clone <ton-repo> && cd projet-airbus-scd
-   pip install -r requirements.txt   # métier seulement
-   python -m src.utils.device        # DOIT afficher "CUDA actif"
-   ```
-3. **Garde-fou anti-gaspillage** : avant tout entraînement long, vérifie que
-   `torch.cuda.is_available()` est `True`. Sinon tu paies l'instance pour de
-   l'entraînement CPU. Le module `device.py` le contrôle automatiquement.
+# smoke test on 20 tiles
+model, history = train("data/hi-ucd-complete", epochs=2, debug_n=20)
 
-### Pourquoi torch n'est pas dans requirements.txt
-La build torch diffère par machine : MPS en local, CUDA sur vast.ai. Figer
-une version unique casserait le lien au GPU d'un côté ou de l'autre. Le code
-"métier" (numpy, dataloader, modèle…) est identique partout ; torch ne l'est
-pas. C'est l'erreur la plus courante sur GPU loué — évitée ici par conception.
-
-## Économie de crédits
-Tout ce qui n'a pas besoin de puissance se fait gratuitement en local :
-écrire et débugger le code, faire tourner 1 epoch sur 10 tuiles (smoke test),
-tracer les courbes, choisir le seuil. vast.ai ne sert qu'à mettre de la
-puissance sur du code déjà validé en local.
-
-## Données
-Hi-UCD complet, 2 dates. Masque = PNG 3 canaux dans `mask/` :
-- canal 1 : classes occupation du sol T1 (0–9)
-- canal 2 : classes occupation du sol T2 (0–9)
-- canal 3 : changement (0=unlabeled, 1=no-change, 2=change)
-
-La classe `unlabeled` (canal 3 = 0) est exclue de la loss et des métriques.
-Les données ne sont pas dans le repo (cf. `.gitignore`).
+# full run with the DINOv3 encoder
+model, history = train("data/hi-ucd-complete", epochs=30, backbone="dino",
+                       save_path="outputs/checkpoints/dino.pt")
 ```
-```
+
+The same code runs on Apple Silicon (MPS) for development and on NVIDIA GPUs (CUDA) for full training. `torch` is not pinned in `requirements.txt` because the right build depends on the machine.
